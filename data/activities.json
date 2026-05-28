@@ -1,0 +1,59 @@
+[
+  {
+    "id": "d092a89f-2eac-41a0-b452-f7a7236ac106",
+    "name": "COLHEITA F1",
+    "color": "#4f8ef7",
+    "frotas": [
+      62503,
+      62515,
+      62519,
+      62524
+    ]
+  },
+  {
+    "id": "e47d3b88-8a8b-4a04-aab1-1c20dfc50499",
+    "name": "COLHEITA F2",
+    "color": "#22c55e",
+    "frotas": [
+      62510,
+      62512,
+      62516,
+      62522,
+      62523
+    ]
+  },
+  {
+    "id": "a7097398-3143-4bd9-ad81-bf9a4ffcf1ef",
+    "name": "COLHEITA F3",
+    "color": "#f59e0b",
+    "frotas": [
+      62514,
+      62517,
+      62521,
+      62525
+    ]
+  },
+  {
+    "id": "b657cd7a-39a6-4185-b5ef-a60c4d7057d9",
+    "name": "COLHEITA F4",
+    "color": "#ef4444",
+    "frotas": [
+      62507,
+      62518,
+      62528,
+      62529
+    ]
+  },
+  {
+    "id": "a67a1540-f4ed-4ddb-a4fb-412d35bc5bc1",
+    "name": "COLHEITA F5",
+    "color": "#a78bfa",
+    "frotas": [
+      62504,
+      62513,
+      62520,
+      62526,
+      62527
+    ]
+  }
+]
