@@ -3,8 +3,5 @@ services:
     name: disponibilidade-frota
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --timeout 120 app:app
     plan: free
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
