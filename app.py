@@ -136,7 +136,7 @@ def api_catalog():
 
 @app.route("/api/health")
 def health():
-    from database import DATABASE_URL, test_connection
+    from database import test_connection, _use_supabase
     db_ok, db_msg = test_connection()
     periods = []
     try:
@@ -145,7 +145,7 @@ def health():
         db_msg = str(e)
     return jsonify({
         "ok":             db_ok,
-        "db":             "postgres" if DATABASE_URL else "local",
+        "db":             "supabase" if _use_supabase() else "local",
         "db_message":     db_msg,
         "periods_loaded": periods,
     })
