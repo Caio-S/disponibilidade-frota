@@ -1,0 +1,91 @@
+"""
+Persistent key-value store backed by PostgreSQL (production)
+or a local JSON file (development, when DATABASE_URL is not set).
+"""
+import os
+import json
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
+_LOCAL_FILE  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "kv_store.json")
+
+
+# ── Local fallback (development) ──────────────────────────────────────────────
+def _local_load():
+    if os.path.exists(_LOCAL_FILE):
+        with open(_LOCAL_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def _local_save(store):
+    with open(_LOCAL_FILE, "w", encoding="utf-8") as f:
+        json.dump(store, f, ensure_ascii=False, indent=2)
+
+def _local_get(key, default=None):
+    return _local_load().get(key, default)
+
+def _local_set(key, value):
+    store = _local_load()
+    store[key] = value
+    _local_save(store)
+
+
+# ── PostgreSQL (production) ───────────────────────────────────────────────────
+def _pg_conn():
+    import psycopg2
+    url = DATABASE_URL
+    # Render's DATABASE_URL starts with "postgres://" but psycopg2 needs "postgresql://"
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    return psycopg2.connect(url, sslmode="require")
+
+def _pg_init():
+    with _pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS kv_store (
+                    key        TEXT PRIMARY KEY,
+                    value      TEXT NOT NULL,
+                    updated_at TIMESTAMP DEFAULT NOW()
+                )
+            """)
+        conn.commit()
+
+_pg_ready = False
+def _ensure_pg():
+    global _pg_ready
+    if not _pg_ready:
+        _pg_init()
+        _pg_ready = True
+
+def _pg_get(key, default=None):
+    _ensure_pg()
+    with _pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT value FROM kv_store WHERE key = %s", (key,))
+            row = cur.fetchone()
+    return json.loads(row[0]) if row else default
+
+def _pg_set(key, value):
+    _ensure_pg()
+    with _pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO kv_store (key, value, updated_at)
+                VALUES (%s, %s, NOW())
+                ON CONFLICT (key)
+                DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+            """, (key, json.dumps(value, ensure_ascii=False)))
+        conn.commit()
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
+def kv_get(key, default=None):
+    if DATABASE_URL:
+        return _pg_get(key, default)
+    return _local_get(key, default)
+
+def kv_set(key, value):
+    if DATABASE_URL:
+        _pg_set(key, value)
+    else:
+        _local_set(key, value)

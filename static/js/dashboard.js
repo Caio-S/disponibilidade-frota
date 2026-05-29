@@ -435,7 +435,11 @@ async function init() {
   errEl.classList.add('d-none');
 
   try {
-    const res = await fetch('/api/grouped');
+    // 90s timeout — Render free tier cold start can be slow
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 90000);
+    const res = await fetch('/api/grouped', { signal: controller.signal });
+    clearTimeout(timer);
     const allData = await res.json();
     if (!res.ok) throw new Error(allData.error || 'Erro na API');
 
@@ -476,7 +480,10 @@ async function init() {
   } catch (err) {
     loadingEl.classList.add('d-none');
     errEl.classList.remove('d-none');
-    document.getElementById('error-msg').textContent = err.message;
+    const msg = err.name === 'AbortError'
+      ? 'Tempo limite esgotado. O servidor pode estar iniciando — aguarde 30s e recarregue.'
+      : err.message;
+    document.getElementById('error-msg').textContent = msg;
   }
 }
 

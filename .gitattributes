@@ -1,0 +1,15 @@
+# Binary files — never touch line endings
+*.xlsx binary
+*.xls  binary
+*.csv  text eol=lf
+
+# Text files — normalize to LF
+*.py   text eol=lf
+*.html text eol=lf
+*.js   text eol=lf
+*.css  text eol=lf
+*.json text eol=lf
+*.txt  text eol=lf
+*.yaml text eol=lf
+*.md   text eol=lf
+Procfile text eol=lf

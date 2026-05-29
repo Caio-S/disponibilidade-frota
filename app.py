@@ -3,6 +3,7 @@ import json
 from flask import Flask, render_template, jsonify, request
 from werkzeug.utils import secure_filename
 from parser_xlsx import parse_report, parse_catalog, build_grouped
+from database import kv_get, kv_set
 
 app = Flask(__name__)
 
@@ -10,20 +11,17 @@ BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR   = os.path.join(BASE_DIR, "data")
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 
-os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app.config["UPLOAD_FOLDER"]      = UPLOAD_DIR
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024
 
-# Default data files (committed to the repo)
 DEFAULT_CSV  = os.path.join(DATA_DIR, "frota base.csv")
-DEFAULT_XLSX = os.path.join(DATA_DIR, "mes.xlsx")        # rename in data/
-ACTIVITIES_FILE = os.path.join(DATA_DIR, "activities.json")
+DEFAULT_XLSX = os.path.join(DATA_DIR, "mes.xlsx")
 
-# In-memory: period_key → {"grouped": ..., "report": ...}
+# Runtime cache so we don't re-parse on every request
 _catalog_cache = None
-_period_data   = {}
+_period_cache  = {}   # {period_key: data_dict}
 
 
 # ── Catalog ───────────────────────────────────────────────────────────────────
@@ -34,19 +32,46 @@ def get_catalog():
     return _catalog_cache
 
 
-# ── Period loading ────────────────────────────────────────────────────────────
+# ── Period helpers ────────────────────────────────────────────────────────────
+def _build_period_dict(report, catalog):
+    grouped = build_grouped(catalog, report)
+    return {
+        "periodo_inicio":          grouped["periodo_inicio"],
+        "periodo_fim":             grouped["periodo_fim"],
+        "overall_disponibilidade": grouped["overall_disponibilidade"],
+        "cliente":                 report["cliente"],
+        "groups":                  grouped["groups"],
+        "vehicles":                grouped["vehicles"],
+    }
+
+
 def load_period(xlsx_path, period_key):
+    """Parse xlsx, persist to DB, update runtime cache."""
     report  = parse_report(xlsx_path)
     catalog = get_catalog()
-    grouped = build_grouped(catalog, report)
-    entry   = {"grouped": grouped, "report": report}
-    _period_data[period_key] = entry
-    return entry
+    data    = _build_period_dict(report, catalog)
+    kv_set(f"period_{period_key}", data)
+    _period_cache[period_key] = data
+    return data
 
 
-def _try_load_default():
-    """Load default xlsx into 'mes' on first request if no data yet."""
-    if os.path.exists(DEFAULT_XLSX):
+def get_all_periods():
+    """Return all periods from runtime cache, falling back to DB."""
+    result = {}
+    for key in ("dia", "semana", "mes", "acumulado"):
+        if key in _period_cache:
+            result[key] = _period_cache[key]
+            continue
+        stored = kv_get(f"period_{key}")
+        if stored:
+            _period_cache[key] = stored
+            result[key] = stored
+    return result
+
+
+def _bootstrap():
+    """On first start, load default xlsx if no period data in DB yet."""
+    if not kv_get("period_mes") and os.path.exists(DEFAULT_XLSX):
         load_period(DEFAULT_XLSX, "mes")
 
 
@@ -58,25 +83,8 @@ def index():
 
 @app.route("/api/grouped")
 def api_grouped():
-    if not _period_data:
-        try:
-            _try_load_default()
-        except Exception as e:
-            return jsonify({"error": str(e)}), 500
-
-    response = {}
-    for key, val in _period_data.items():
-        g = val["grouped"]
-        r = val["report"]
-        response[key] = {
-            "periodo_inicio": g["periodo_inicio"],
-            "periodo_fim":    g["periodo_fim"],
-            "overall_disponibilidade": g["overall_disponibilidade"],
-            "cliente":  r["cliente"],
-            "groups":   g["groups"],
-            "vehicles": g["vehicles"],
-        }
-    return jsonify(response)
+    _bootstrap()
+    return jsonify(get_all_periods())
 
 
 @app.route("/api/upload", methods=["POST"])
@@ -94,12 +102,11 @@ def upload_file():
     f.save(dest)
     try:
         data = load_period(dest, period)
-        g    = data["grouped"]
         return jsonify({
             "period":         period,
-            "periodo_inicio": g["periodo_inicio"],
-            "periodo_fim":    g["periodo_fim"],
-            "overall_disponibilidade": g["overall_disponibilidade"],
+            "periodo_inicio": data["periodo_inicio"],
+            "periodo_fim":    data["periodo_fim"],
+            "overall_disponibilidade": data["overall_disponibilidade"],
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -107,10 +114,7 @@ def upload_file():
 
 @app.route("/api/activities", methods=["GET"])
 def get_activities():
-    if os.path.exists(ACTIVITIES_FILE):
-        with open(ACTIVITIES_FILE, encoding="utf-8") as f:
-            return jsonify(json.load(f))
-    return jsonify([])
+    return jsonify(kv_get("activities", []))
 
 
 @app.route("/api/activities", methods=["POST"])
@@ -118,8 +122,7 @@ def save_activities():
     data = request.get_json(force=True)
     if not isinstance(data, list):
         return jsonify({"error": "Payload deve ser uma lista"}), 400
-    with open(ACTIVITIES_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    kv_set("activities", data)
     return jsonify({"ok": True, "count": len(data)})
 
 
@@ -128,6 +131,17 @@ def api_catalog():
     cat   = get_catalog()
     items = [{"frota": k, **v} for k, v in sorted(cat.items())]
     return jsonify(items)
+
+
+@app.route("/api/health")
+def health():
+    from database import DATABASE_URL
+    periods = list(get_all_periods().keys())
+    return jsonify({
+        "ok":              True,
+        "db":              "postgres" if DATABASE_URL else "local",
+        "periods_loaded":  periods,
+    })
 
 
 if __name__ == "__main__":
