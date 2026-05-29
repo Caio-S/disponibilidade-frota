@@ -364,7 +364,7 @@ function renderPeriodTable(periodKey) {
       html.push(`<tr>
         <td class="fw-semibold">${row.frota ?? '—'}</td>
         <td>${row.atividade || '—'}</td>
-        <td>${row.especialidade || '—'}</td>
+        <td>${row.descricao_especialidade || row.especialidade || '—'}</td>
         <td style="color:#8892a4">${row.descricao || '—'}</td>
         <td class="text-end"><span class="badge-disp ${dc}">${fmtPct(row.disponibilidade)}</span></td>
         <td class="text-end font-monospace">${fmtH(row.mttr_h)}</td>
