@@ -274,29 +274,39 @@ body {
 /* ── Activity filter bar ─────────────────────────────────────── */
 .activity-filter-bar {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0.4rem;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 0.55rem 0.9rem;
+  padding: 0.6rem 0.9rem;
+}
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.filter-row + .filter-row {
+  border-top: 1px solid var(--border);
+  padding-top: 0.4rem;
 }
 .filter-bar-label {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 600;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: .06em;
   white-space: nowrap;
   flex-shrink: 0;
+  min-width: 80px;
 }
-.activity-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; flex: 1; }
+.activity-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.22em 0.7em;
+  padding: 0.2em 0.65em;
   border-radius: 20px;
   font-size: 0.77rem;
   font-weight: 500;
@@ -312,6 +322,69 @@ body {
 .chip.active { color: #fff; border-color: transparent; }
 .chip-all.active { background: var(--accent); }
 .chip-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── Frente + atividade table rows ──────────────────────────── */
+.fleet-table .frente-row td {
+  padding: 0.4rem 0.8rem;
+  background: rgba(79,142,247,.1);
+  border-top: 2px solid rgba(79,142,247,.3);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
+/* ── Sidebar: frente cards ───────────────────────────────────── */
+.frente-card {
+  margin: 0 0.5rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  transition: border-color .15s;
+}
+.frente-card:hover { border-color: var(--accent); }
+.frente-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--card);
+  cursor: pointer;
+  user-select: none;
+}
+.frente-header:hover { background: var(--card-h); }
+.frente-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+.frente-name-input {
+  flex: 1; background: none; border: none;
+  color: var(--text); font-size: 0.85rem; font-weight: 700;
+  outline: none; min-width: 0; cursor: pointer;
+}
+.frente-name-input:focus { background: rgba(255,255,255,.05); border-radius: 4px; padding: 0 4px; cursor: text; }
+.frente-meta { font-size: 0.7rem; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+.frente-body { background: var(--bg); border-top: 1px solid var(--border); padding: 0.4rem 0; }
+
+/* Atividade inside frente */
+.ativ-item {
+  display: flex; align-items: center; gap: 0.45rem;
+  padding: 0.35rem 0.75rem; transition: background .1s;
+}
+.ativ-item:hover { background: var(--card-h); }
+.ativ-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.ativ-name-input {
+  flex: 1; background: none; border: none;
+  color: var(--text); font-size: 0.8rem; font-weight: 500;
+  outline: none; min-width: 0; cursor: pointer;
+}
+.ativ-name-input:focus { background: rgba(255,255,255,.05); border-radius: 4px; padding: 0 4px; cursor: text; }
+.btn-new-ativ {
+  width: calc(100% - 1rem); margin: 0.3rem 0.5rem 0;
+  font-size: 0.75rem; padding: 0.25rem 0.65rem;
+  border: 1px dashed var(--border); border-radius: 6px;
+  background: none; color: var(--muted); cursor: pointer;
+  transition: all .15s; text-align: left;
+}
+.btn-new-ativ:hover { border-color: var(--accent); color: var(--accent); }
+.new-ativ-form { padding: 0.3rem 0.5rem 0; }
 
 /* ── Gauges ─────────────────────────────────────────────────── */
 .gauges-row {

@@ -16,31 +16,31 @@
   <div class="sidebar-header">
     <div class="d-flex align-items-center gap-2">
       <i class="bi bi-diagram-3-fill text-accent"></i>
-      <span class="fw-bold">Atividades</span>
+      <span class="fw-bold">Frentes &amp; Atividades</span>
     </div>
     <button class="sidebar-close-btn" onclick="toggleSidebar()">
       <i class="bi bi-x-lg"></i>
     </button>
   </div>
 
-  <!-- Activity list -->
-  <div class="sidebar-body" id="activity-list">
+  <!-- Frente list -->
+  <div class="sidebar-body" id="frente-list">
     <!-- rendered by sidebar.js -->
   </div>
 
-  <!-- Add activity -->
+  <!-- New frente -->
   <div class="sidebar-footer">
-    <div id="new-activity-form" class="new-activity-form d-none">
-      <input id="new-activity-name" type="text" class="form-control form-control-sm"
-             placeholder="Nome da atividade (ex: Colheita F1)" maxlength="40" />
+    <div id="new-frente-form" class="new-activity-form d-none">
+      <input id="new-frente-name" type="text" class="form-control form-control-sm"
+             placeholder="Nome da frente (ex: Frente 1)" maxlength="40" />
       <div class="d-flex gap-1 mt-1">
-        <button class="btn btn-sm btn-accent flex-fill" onclick="confirmNewActivity()">Criar</button>
-        <button class="btn btn-sm btn-ghost" onclick="cancelNewActivity()">Cancelar</button>
+        <button class="btn btn-sm btn-accent flex-fill" onclick="confirmNewFrente()">Criar</button>
+        <button class="btn btn-sm btn-ghost" onclick="cancelNewFrente()">Cancelar</button>
       </div>
     </div>
-    <button class="btn btn-sm btn-outline-accent w-100" id="btn-new-activity"
-            onclick="startNewActivity()">
-      <i class="bi bi-plus-lg me-1"></i> Nova Atividade
+    <button class="btn btn-sm btn-outline-accent w-100" id="btn-new-frente"
+            onclick="startNewFrente()">
+      <i class="bi bi-plus-lg me-1"></i> Nova Frente
     </button>
   </div>
 </aside>
@@ -84,11 +84,18 @@
 
     <div id="dashboard" class="d-none">
 
-      <!-- Activity filter bar -->
+      <!-- Filter bar -->
       <div id="activity-filter-bar" class="activity-filter-bar d-none mb-3">
-        <span class="filter-bar-label"><i class="bi bi-funnel-fill me-1"></i>Filtrar:</span>
-        <div id="activity-chips" class="activity-chips"></div>
-        <button class="chip chip-all active" id="chip-all" onclick="filterSelectAll()">Todas</button>
+        <div class="filter-row">
+          <span class="filter-bar-label"><i class="bi bi-grid-3x3-gap me-1"></i>Frente:</span>
+          <button class="chip chip-all active" id="chip-all-frente" onclick="filterSelectAll()">Todas</button>
+          <div id="frente-chips" class="activity-chips"></div>
+        </div>
+        <div class="filter-row d-none" id="ativ-filter-row">
+          <span class="filter-bar-label"><i class="bi bi-activity me-1"></i>Atividade:</span>
+          <button class="chip chip-all active" id="chip-all-ativ" onclick="filterAtiv(null)">Todas</button>
+          <div id="atividade-chips" class="activity-chips"></div>
+        </div>
       </div>
 
       <!-- Gauges -->

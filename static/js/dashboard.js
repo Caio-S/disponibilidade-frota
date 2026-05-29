@@ -4,8 +4,8 @@ const PERIOD_LABEL = { dia: 'DIA', semana: 'SEMANA', mes: 'MÊS', acumulado: 'AC
 const PAGE_SIZE = 25;
 
 // ─── Active filter state ──────────────────────────────────────────────────────
-// Empty Set = "Todas" (no filter). Non-empty = only these activity IDs.
-let _activeFilters = new Set();
+let _activeFrenteId = null;   // null = todas as frentes
+let _activeAtivId   = null;   // null = todas as atividades da frente selecionada
 
 // ─── Per-period state ─────────────────────────────────────────────────────────
 // state[period] = { data, filtered, page, sortCol, sortDir }
@@ -29,57 +29,62 @@ function gaugeColor(v) {
 }
 
 // ─── Build flat row list ──────────────────────────────────────────────────────
-/**
- * Returns [{isGroup, label, color?, count?} | vehicleRow, ...]
- * Groups by activities if any exist, otherwise by specialty.
- */
 function buildRows(vehicles, query) {
-  const q = query ? query.toLowerCase() : '';
-  const acts = (typeof getActivities === 'function') ? getActivities() : [];
+  const q       = query ? query.toLowerCase() : '';
+  const frentes = _getFrentes();
 
-  // Build frota→activity map
-  const frotaToAct = {};
-  acts.forEach(act => act.frotas.forEach(f => { frotaToAct[f] = act; }));
-
-  // Filter vehicles
-  const filtered = vehicles.filter(v => {
-    if (!q) return true;
-    return (
-      String(v.frota).includes(q) ||
-      (v.atividade || '').toLowerCase().includes(q) ||
-      (v.especialidade || '').toLowerCase().includes(q) ||
-      (v.descricao || '').toLowerCase().includes(q)
-    );
-  });
+  const filtered = vehicles.filter(v => !q ||
+    String(v.frota).includes(q) ||
+    (v.atividade || '').toLowerCase().includes(q) ||
+    (v.especialidade || '').toLowerCase().includes(q) ||
+    (v.descricao || '').toLowerCase().includes(q)
+  );
 
   const rows = [];
 
-  if (acts.length > 0) {
-    // Which activities to show: all or only the filtered ones
-    const visibleActs = _activeFilters.size > 0
-      ? acts.filter(a => _activeFilters.has(a.id))
-      : acts;
-    const visibleActIds = new Set(visibleActs.map(a => a.id));
+  if (frentes.length > 0) {
+    const visibleFrentes = _activeFrenteId
+      ? frentes.filter(f => f.id === _activeFrenteId)
+      : frentes;
 
-    // Group vehicles by activity (unassigned fleets are hidden)
-    const byAct = {};
-    filtered.forEach(v => {
-      const act = frotaToAct[v.frota];
-      if (act && visibleActIds.has(act.id)) {
-        if (!byAct[act.id]) byAct[act.id] = [];
-        byAct[act.id].push(v);
-      }
-    });
+    // frota → {frenteId, atividade}
+    const frotaMap = {};
+    frentes.forEach(f => f.atividades.forEach(a => a.frotas.forEach(fr => {
+      frotaMap[fr] = { frenteId: f.id, ativ: a };
+    })));
 
-    // Emit in activity order (only assigned fleets)
-    visibleActs.forEach(act => {
-      const vlist = byAct[act.id] || [];
-      if (vlist.length === 0) return;
-      rows.push({ isGroup: true, label: act.name, color: act.color, count: vlist.length });
-      vlist.forEach(v => rows.push({ isGroup: false, ...v }));
+    visibleFrentes.forEach(f => {
+      const visibleAtvs = _activeAtivId
+        ? f.atividades.filter(a => a.id === _activeAtivId)
+        : f.atividades;
+
+      const byAtiv = {};
+      filtered.forEach(v => {
+        const m = frotaMap[v.frota];
+        if (m && m.frenteId === f.id && visibleAtvs.find(a => a.id === m.ativ.id)) {
+          const id = m.ativ.id;
+          if (!byAtiv[id]) byAtiv[id] = [];
+          byAtiv[id].push(v);
+        }
+      });
+
+      const hasAny = visibleAtvs.some(a => (byAtiv[a.id] || []).length > 0);
+      if (!hasAny) return;
+
+      // Frente header
+      const total = visibleAtvs.reduce((s, a) => s + (byAtiv[a.id] || []).length, 0);
+      rows.push({ isGroup: true, isFrente: true,  label: f.name, color: f.color, count: total });
+
+      // Atividade sub-headers
+      visibleAtvs.forEach(a => {
+        const vlist = byAtiv[a.id] || [];
+        if (!vlist.length) return;
+        rows.push({ isGroup: true, isFrente: false, label: a.name, color: a.color, count: vlist.length });
+        vlist.forEach(v => rows.push({ isGroup: false, ...v }));
+      });
     });
   } else {
-    // ── Specialty grouping (default) ──
+    // Default: group by specialty
     const bySpec = {};
     filtered.forEach(v => {
       const key = v.descricao_especialidade || v.especialidade || 'Outros';
@@ -87,7 +92,7 @@ function buildRows(vehicles, query) {
       bySpec[key].push(v);
     });
     Object.entries(bySpec).sort(([a],[b]) => a.localeCompare(b)).forEach(([key, vlist]) => {
-      rows.push({ isGroup: true, label: key, color: '#4f8ef7', count: vlist.length });
+      rows.push({ isGroup: true, isFrente: false, label: key, color: '#4f8ef7', count: vlist.length });
       vlist.forEach(v => rows.push({ isGroup: false, ...v }));
     });
   }
@@ -95,91 +100,114 @@ function buildRows(vehicles, query) {
   return rows;
 }
 
-// ─── Availability based on active fleets + filter ────────────────────────────
-/**
- * Returns average availability for the currently selected activities.
- * _activeFilters empty = all activities (or all vehicles if no activities).
- */
-function calcActivityDisp(vehicles) {
-  const acts = (typeof getActivities === 'function') ? getActivities() : [];
+// ─── Helpers: frente/atividade data ──────────────────────────────────────────
+function _getFrentes() {
+  return (typeof getFrente === 'function') ? getFrente() : [];
+}
 
-  let relevantActs = acts;
-  if (_activeFilters.size > 0) {
-    relevantActs = acts.filter(a => _activeFilters.has(a.id));
-  }
+/** Flat set of frotas matching current filter. null = no frentes defined. */
+function _filteredFrotaSet() {
+  const frentes = _getFrentes();
+  if (frentes.length === 0) return null;
 
-  let pool;
-  if (relevantActs.length === 0 && acts.length === 0) {
-    pool = vehicles;                         // no activities at all → all fleets
-  } else if (relevantActs.length === 0) {
-    return null;                             // filter selected but no match
+  let ativs = [];
+  if (_activeFrenteId) {
+    const f = frentes.find(f => f.id === _activeFrenteId);
+    if (!f) return new Set();
+    ativs = _activeAtivId
+      ? f.atividades.filter(a => a.id === _activeAtivId)
+      : f.atividades;
   } else {
-    const assigned = new Set(relevantActs.flatMap(a => a.frotas));
-    pool = vehicles.filter(v => assigned.has(v.frota));
+    ativs = frentes.flatMap(f => f.atividades);
   }
+  return new Set(ativs.flatMap(a => a.frotas));
+}
 
+// ─── Availability based on active filter ─────────────────────────────────────
+function calcActivityDisp(vehicles) {
+  const frotaSet = _filteredFrotaSet();
+  let pool = frotaSet === null ? vehicles : vehicles.filter(v => frotaSet.has(v.frota));
   const withDisp = pool.filter(v => v.disponibilidade != null);
   if (!withDisp.length) return null;
   return Math.round(withDisp.reduce((s, v) => s + v.disponibilidade, 0) / withDisp.length * 100) / 100;
 }
 
-// ─── Activity filter bar ──────────────────────────────────────────────────────
+// ─── Filter bar: Frentes + Atividades ────────────────────────────────────────
 function renderActivityFilters() {
-  const acts = (typeof getActivities === 'function') ? getActivities() : [];
-  const bar  = document.getElementById('activity-filter-bar');
-  const chips = document.getElementById('activity-chips');
+  const frentes = _getFrentes();
+  const bar     = document.getElementById('activity-filter-bar');
+  if (!bar) return;
 
-  if (acts.length === 0) {
-    bar.classList.add('d-none');
-    return;
-  }
+  if (frentes.length === 0) { bar.classList.add('d-none'); return; }
   bar.classList.remove('d-none');
 
-  chips.innerHTML = acts.map(act => {
-    const isActive = _activeFilters.size === 0 || _activeFilters.has(act.id);
-    // When _activeFilters is empty, "Todas" is active, individual chips are unselected
-    const chipActive = _activeFilters.has(act.id) ? 'active' : '';
-    return `
-      <span class="chip ${chipActive}" id="chip-${act.id}"
-            style="${chipActive ? `background:${act.color};border-color:${act.color}` : ''}"
-            onclick="filterToggle('${act.id}','${act.color}')">
-        <span class="chip-dot" style="background:${act.color}"></span>
-        ${act.name}
-      </span>`;
-  }).join('');
-
-  // "Todas" active state
-  const allBtn = document.getElementById('chip-all');
-  if (allBtn) {
-    allBtn.classList.toggle('active', _activeFilters.size === 0);
+  // Row 1: frente chips
+  const frenteChips = document.getElementById('frente-chips');
+  if (frenteChips) {
+    frenteChips.innerHTML = frentes.map(f => {
+      const active = _activeFrenteId === f.id;
+      return `<span class="chip ${active ? 'active' : ''}"
+                    style="${active ? `background:${f.color};border-color:${f.color}` : ''}"
+                    onclick="filterFrente('${f.id}','${f.color}')">
+                <span class="chip-dot" style="background:${f.color}"></span>${f.name}
+              </span>`;
+    }).join('');
   }
+  document.getElementById('chip-all-frente')?.classList.toggle('active', !_activeFrenteId);
+
+  // Row 2: atividade chips (only when a frente is selected)
+  const ativRow = document.getElementById('ativ-filter-row');
+  if (!ativRow) return;
+
+  if (!_activeFrenteId) { ativRow.classList.add('d-none'); return; }
+  ativRow.classList.remove('d-none');
+
+  const f = frentes.find(f => f.id === _activeFrenteId);
+  const ativChips = document.getElementById('atividade-chips');
+  if (ativChips && f) {
+    ativChips.innerHTML = f.atividades.map(a => {
+      const active = _activeAtivId === a.id;
+      return `<span class="chip ${active ? 'active' : ''}"
+                    style="${active ? `background:${a.color};border-color:${a.color}` : ''}"
+                    onclick="filterAtiv('${a.id}','${a.color}')">
+                <span class="chip-dot" style="background:${a.color}"></span>${a.name}
+              </span>`;
+    }).join('');
+  }
+  document.getElementById('chip-all-ativ')?.classList.toggle('active', !_activeAtivId);
 }
 
-function filterToggle(actId, color) {
-  if (_activeFilters.has(actId)) {
-    _activeFilters.delete(actId);
-  } else {
-    _activeFilters.add(actId);
-  }
+function filterFrente(id) {
+  _activeFrenteId = _activeFrenteId === id ? null : id;
+  _activeAtivId   = null;
+  renderActivityFilters();
+  rebuildGauges();
+  rebuildAllTables();
+}
+
+function filterAtiv(id) {
+  _activeAtivId = _activeAtivId === id ? null : id;
   renderActivityFilters();
   rebuildGauges();
   rebuildAllTables();
 }
 
 function filterSelectAll() {
-  _activeFilters.clear();
+  _activeFrenteId = null;
+  _activeAtivId   = null;
   renderActivityFilters();
   rebuildGauges();
   rebuildAllTables();
 }
 
-/** Called by sidebar after activity list changes. */
 function rebuildActivityFilters() {
-  // Remove stale filter IDs (activity was deleted)
-  const acts = (typeof getActivities === 'function') ? getActivities() : [];
-  const validIds = new Set(acts.map(a => a.id));
-  for (const id of [..._activeFilters]) {
-    if (!validIds.has(id)) _activeFilters.delete(id);
+  // Validate stale IDs
+  const frentes = _getFrentes();
+  const fIds = new Set(frentes.map(f => f.id));
+  if (_activeFrenteId && !fIds.has(_activeFrenteId)) { _activeFrenteId = null; _activeAtivId = null; }
+  if (_activeFrenteId && _activeAtivId) {
+    const f = frentes.find(f => f.id === _activeFrenteId);
+    if (!f || !f.atividades.find(a => a.id === _activeAtivId)) _activeAtivId = null;
   }
   renderActivityFilters();
   rebuildGauges();
@@ -300,15 +328,25 @@ function renderPeriodTable(periodKey) {
 
   for (const row of rows) {
     if (row.isGroup) {
-      const dotStyle = row.color ? `style="color:${row.color}"` : '';
-      html.push(`
-        <tr class="activity-row">
-          <td colspan="7" ${dotStyle}>
-            <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${row.color || '#4f8ef7'};margin-right:6px;vertical-align:middle"></span>
-            ${row.label}
-            <span style="font-weight:400;color:#8892a4;margin-left:4px">(${row.count})</span>
-          </td>
-        </tr>`);
+      if (row.isFrente) {
+        html.push(`
+          <tr class="frente-row">
+            <td colspan="7">
+              <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${row.color};margin-right:7px;vertical-align:middle"></span>
+              ${row.label}
+              <span style="font-weight:400;color:#8892a4;font-size:.75rem;margin-left:5px">(${row.count} frotas)</span>
+            </td>
+          </tr>`);
+      } else {
+        html.push(`
+          <tr class="activity-row">
+            <td colspan="7">
+              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${row.color};margin-right:6px;vertical-align:middle;margin-left:12px"></span>
+              ${row.label}
+              <span style="font-weight:400;color:#8892a4;margin-left:4px">(${row.count})</span>
+            </td>
+          </tr>`);
+      }
       continue;
     }
     if (dataIdx >= start && dataIdx < end) {
