@@ -67,6 +67,9 @@
     <div class="d-flex align-items-center gap-2 flex-wrap">
       <input id="global-search" type="text" class="form-control form-control-sm search-box"
              placeholder="Buscar frota, atividade..." style="width:210px" />
+      <button class="btn btn-sm btn-ghost" onclick="openOsUploadModal()" title="Carregar relatório de OS">
+        <i class="bi bi-clipboard2-pulse me-1"></i> Carregar OS
+      </button>
     </div>
   </nav>
 
@@ -223,6 +226,94 @@
         <button type="button" class="btn btn-accent" onclick="saveModalSelection()">
           <i class="bi bi-floppy-fill me-1"></i> Salvar
         </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Toast: sem OS ─────────────────────────────────────────────────────────── -->
+<div id="sem-os-toast" class="sem-os-toast d-none">
+  <i class="bi bi-check-circle-fill me-2"></i> SEM OS no período
+</div>
+
+<!-- ── Modal: upload de OS ───────────────────────────────────────────────────── -->
+<div class="modal fade" id="os-upload-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" style="max-width:440px">
+    <div class="modal-content modal-dark">
+      <div class="modal-header border-bottom-dark">
+        <h6 class="modal-title fw-bold">Carregar Relatório de OS</h6>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-4">
+        <p class="text-muted mb-3" style="font-size:.82rem">
+          Exporte do CHB o relatório de Ordens de Serviço e carregue aqui. O cabeçalho deve estar na linha 19.
+        </p>
+        <div id="os-drop-zone" class="upload-drop-zone" onclick="document.getElementById('os-file-input').click()">
+          <i class="bi bi-clipboard2-pulse" id="os-drop-icon"></i>
+          <div id="os-drop-label">Clique ou arraste o arquivo .xlsx aqui</div>
+          <small id="os-drop-name" class="text-muted"></small>
+        </div>
+        <input id="os-file-input" type="file" accept=".xlsx" class="d-none" />
+        <div id="os-upload-progress" class="d-none mt-3">
+          <div class="d-flex align-items-center gap-2">
+            <div class="spinner-border spinner-border-sm text-accent" role="status"></div>
+            <span style="font-size:.82rem;color:#8892a4">Processando...</span>
+          </div>
+        </div>
+        <div id="os-upload-success" class="d-none mt-3 p-3 rounded" style="background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3)">
+          <i class="bi bi-check-circle-fill text-success me-2"></i>
+          <span id="os-upload-success-msg" style="font-size:.82rem"></span>
+        </div>
+        <div id="os-upload-error" class="d-none mt-3 p-3 rounded" style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3)">
+          <i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>
+          <span id="os-upload-error-msg" style="font-size:.82rem"></span>
+        </div>
+      </div>
+      <div class="modal-footer border-top-dark">
+        <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Fechar</button>
+        <button type="button" class="btn btn-accent" id="os-confirm-btn" disabled onclick="confirmOsUpload()">
+          <i class="bi bi-upload me-1"></i> Carregar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: ordens de serviço da frota ─────────────────────────────────────── -->
+<div class="modal fade" id="os-modal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content modal-dark">
+      <div class="modal-header border-bottom-dark">
+        <div>
+          <h6 class="modal-title fw-bold" id="os-modal-title">Ordens de Serviço</h6>
+          <small class="text-muted-c" id="os-modal-subtitle"></small>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+        <div id="os-modal-loading" class="text-center py-4">
+          <div class="spinner-border spinner-border-sm text-accent" role="status"></div>
+          <span class="ms-2" style="font-size:.82rem;color:#8892a4">Carregando...</span>
+        </div>
+        <div id="os-modal-content" class="d-none">
+          <table class="fleet-table w-100">
+            <thead>
+              <tr>
+                <th>Nro OS</th>
+                <th>Status</th>
+                <th>Problema</th>
+                <th>Abertura</th>
+                <th>Fechamento</th>
+                <th class="text-end">Tempo</th>
+              </tr>
+            </thead>
+            <tbody id="os-modal-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer border-top-dark justify-content-between">
+        <small class="text-muted-c" id="os-modal-count"></small>
+        <button type="button" class="btn btn-ghost" data-bs-dismiss="modal">Fechar</button>
       </div>
     </div>
   </div>

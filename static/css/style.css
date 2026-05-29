@@ -566,3 +566,39 @@ body {
 .spinner-border.text-accent { color: var(--accent) !important; }
 @media (max-width: 900px) { .gauges-row { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 500px)  { .gauges-row { grid-template-columns: 1fr; } }
+
+/* ── OS row shake ────────────────────────────────────────────── */
+@keyframes shake {
+  0%,100% { transform: translateX(0); }
+  20%     { transform: translateX(-5px); }
+  40%     { transform: translateX(5px); }
+  60%     { transform: translateX(-4px); }
+  80%     { transform: translateX(4px); }
+}
+.shake { animation: shake 0.45s ease; }
+tr.os-clickable { cursor: pointer; }
+tr.os-clickable:hover td { background: rgba(79,142,247,.07) !important; }
+
+/* ── Sem-OS toast ────────────────────────────────────────────── */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.sem-os-toast {
+  position: fixed;
+  bottom: 2rem; right: 2rem;
+  background: rgba(34,197,94,.12);
+  border: 1px solid rgba(34,197,94,.35);
+  color: #22c55e;
+  padding: .55rem 1.1rem;
+  border-radius: .5rem;
+  font-size: .85rem;
+  font-weight: 600;
+  z-index: 9999;
+  animation: fadeInUp .2s ease;
+}
+
+/* ── OS modal status badges ──────────────────────────────────── */
+.os-status-L { color: #22c55e; font-weight: 700; }
+.os-status-A { color: #f59e0b; font-weight: 700; }
+.os-status-C { color: #8892a4; font-weight: 700; }

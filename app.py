@@ -3,7 +3,8 @@ import json
 import logging
 from flask import Flask, render_template, jsonify, request
 from werkzeug.utils import secure_filename
-from parser_xlsx import parse_report, parse_catalog, build_grouped
+from parser_xlsx import parse_report, parse_catalog, build_grouped, parse_os_report
+from datetime import datetime
 from database import kv_get, kv_set
 
 app = Flask(__name__)
@@ -23,6 +24,7 @@ DEFAULT_XLSX = os.path.join(DATA_DIR, "mes.xlsx")
 # Runtime cache so we don't re-parse on every request
 _catalog_cache = None
 _period_cache  = {}   # {period_key: data_dict}
+_os_cache      = []   # list of OS records
 
 
 # ── Catalog ───────────────────────────────────────────────────────────────────
@@ -132,6 +134,72 @@ def api_catalog():
     cat   = get_catalog()
     items = [{"frota": k, **v} for k, v in sorted(cat.items())]
     return jsonify(items)
+
+
+def _parse_period_date(s):
+    """Parse DD/MM/YY or DD/MM/YYYY string to date object."""
+    if not s:
+        return None
+    for fmt in ("%d/%m/%y", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(str(s).strip(), fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+@app.route("/api/upload-os", methods=["POST"])
+def upload_os():
+    global _os_cache
+    if "file" not in request.files:
+        return jsonify({"error": "Nenhum arquivo enviado"}), 400
+    f = request.files["file"]
+    if not f.filename.endswith(".xlsx"):
+        return jsonify({"error": "Apenas .xlsx são suportados"}), 400
+
+    dest = os.path.join(UPLOAD_DIR, "os_" + secure_filename(f.filename))
+    f.save(dest)
+    try:
+        _os_cache = parse_os_report(dest)
+        kv_set("os_data", _os_cache)
+        return jsonify({"ok": True, "count": len(_os_cache)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/os-data")
+def api_os_data():
+    global _os_cache
+    if not _os_cache:
+        _os_cache = kv_get("os_data", [])
+
+    frota  = request.args.get("frota",  type=int)
+    period = request.args.get("period", "").lower()
+
+    records = _os_cache
+
+    if frota is not None:
+        records = [r for r in records if r["frota"] == frota]
+
+    if period in ("dia", "semana", "mes", "acumulado"):
+        pd = get_all_periods().get(period)
+        if pd:
+            p_start = _parse_period_date(pd.get("periodo_inicio"))
+            p_end   = _parse_period_date(pd.get("periodo_fim"))
+            if p_start and p_end:
+                filtered = []
+                for r in records:
+                    iso = r.get("abertura_iso")
+                    if iso:
+                        try:
+                            dt = datetime.fromisoformat(iso).date()
+                            if p_start <= dt <= p_end:
+                                filtered.append(r)
+                        except Exception:
+                            pass
+                records = filtered
+
+    return jsonify(records)
 
 
 @app.route("/api/health")

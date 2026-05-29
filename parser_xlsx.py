@@ -1,5 +1,5 @@
 import csv
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as dt_time
 from openpyxl import load_workbook
 
 
@@ -116,6 +116,120 @@ def parse_report(filepath):
         },
         "vehicles": vehicles,
     }
+
+
+def _parse_os_datetime(date_val, time_val):
+    """Parse date + time cell values from OS report → datetime or None."""
+    if date_val is None:
+        return None
+    if isinstance(date_val, datetime):
+        d = date_val.replace(second=0, microsecond=0)
+    elif isinstance(date_val, (int, float)):
+        d = datetime(1899, 12, 30) + timedelta(days=int(date_val))
+    else:
+        s = str(date_val).strip()
+        if not s:
+            return None
+        parsed = None
+        for fmt in ("%d/%m/%y", "%d/%m/%Y", "%Y-%m-%d"):
+            try:
+                parsed = datetime.strptime(s, fmt)
+                break
+            except ValueError:
+                continue
+        if not parsed:
+            return None
+        d = parsed
+
+    if time_val is not None:
+        if isinstance(time_val, dt_time):
+            return d.replace(hour=time_val.hour, minute=time_val.minute, second=0, microsecond=0)
+        if isinstance(time_val, datetime):
+            return d.replace(hour=time_val.hour, minute=time_val.minute, second=0, microsecond=0)
+        ts = str(time_val).strip()
+        if ":" in ts:
+            parts = ts.split(":")
+            try:
+                return d.replace(hour=int(parts[0]) % 24, minute=int(parts[1]), second=0, microsecond=0)
+            except (ValueError, IndexError):
+                pass
+    return d
+
+
+def _fmt_tempo(minutos):
+    if minutos is None:
+        return None
+    m = abs(int(minutos))
+    days, rem = divmod(m, 1440)
+    h, mins = divmod(rem, 60)
+    if days:
+        return f"{days}d {h:02d}:{mins:02d}"
+    return f"{h:02d}:{mins:02d}"
+
+
+def parse_os_report(filepath):
+    """Parse OS report xlsx (header on row 19) → list of OS dicts."""
+    wb = load_workbook(filepath, data_only=True)
+    ws = wb.active
+
+    header_row = next(ws.iter_rows(min_row=19, max_row=19, values_only=True))
+    col_map = {}
+    for i, h in enumerate(header_row):
+        if h is not None:
+            key = str(h).strip()
+            if key and key not in col_map:
+                col_map[key] = i
+
+    def get(row, name, default=None):
+        idx = col_map.get(name)
+        if idx is None or idx >= len(row):
+            return default
+        v = row[idx]
+        return v if v is not None else default
+
+    records = []
+    for row in ws.iter_rows(min_row=20, values_only=True):
+        nro_raw = get(row, "Nro OS")
+        if nro_raw is None or str(nro_raw).strip() == "":
+            continue
+        frota_raw = get(row, "Veículo")
+        try:
+            frota = int(str(frota_raw).strip())
+        except (ValueError, TypeError):
+            continue
+
+        status = str(get(row, "Status", "")).strip().upper()
+
+        dt_ab  = _parse_os_datetime(get(row, "Data"),          get(row, "Hora"))
+        dt_lib = _parse_os_datetime(get(row, "Data Liberação"), get(row, "Hora Liberação"))
+        dt_can = _parse_os_datetime(get(row, "Data de Cancelamento"), get(row, "Hora de Cancelamento"))
+
+        dt_fim = None
+        tempo_min = None
+        if status == "L" and dt_lib and dt_ab:
+            dt_fim    = dt_lib
+            tempo_min = int((dt_lib - dt_ab).total_seconds() / 60)
+        elif status == "C" and dt_can and dt_ab:
+            dt_fim    = dt_can
+            tempo_min = int((dt_can - dt_ab).total_seconds() / 60)
+        elif status == "A" and dt_ab:
+            tempo_min = int((datetime.now() - dt_ab).total_seconds() / 60)
+
+        records.append({
+            "nro_os":        str(nro_raw).strip(),
+            "status":        status,
+            "frota":         frota,
+            "desc_veiculo":  str(get(row, "Descrição Veículo", "")).strip(),
+            "desc_problema": str(get(row, "Descrição do Problema", "")).strip(),
+            "abertura_iso":  dt_ab.isoformat() if dt_ab else None,
+            "abertura_str":  dt_ab.strftime("%d/%m/%y %H:%M") if dt_ab else "—",
+            "fechamento_str": (dt_fim.strftime("%d/%m/%y %H:%M") if dt_fim
+                               else ("Em aberto" if status == "A" else "—")),
+            "tempo_str":     _fmt_tempo(tempo_min) if tempo_min is not None else "—",
+            "tempo_min":     tempo_min,
+        })
+
+    return records
 
 
 def build_grouped(catalog, report):

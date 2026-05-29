@@ -361,7 +361,7 @@ function renderPeriodTable(periodKey) {
     }
     if (dataIdx >= start && dataIdx < end) {
       const dc = dispClass(row.disponibilidade);
-      html.push(`<tr>
+      html.push(`<tr class="os-clickable" onclick="openOsModal(${row.frota},'${periodKey}',this)">
         <td class="fw-semibold">${row.frota ?? '—'}</td>
         <td>${row.atividade || '—'}</td>
         <td>${row.descricao_especialidade || row.especialidade || '—'}</td>
@@ -874,3 +874,154 @@ async function initSidebar() {
   renderSidebar();
 }
 function getFrente() { return frentes; }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ORDENS DE SERVIÇO
+// ══════════════════════════════════════════════════════════════════════════════
+
+let _osModal = null;
+let _semOsTimer = null;
+
+const OS_STATUS_LABEL = { L: 'Liberada', A: 'Aberta', C: 'Cancelada' };
+
+async function openOsModal(frota, periodKey, rowEl) {
+  const content  = document.getElementById('os-modal-content');
+  const loading  = document.getElementById('os-modal-loading');
+  const tbody    = document.getElementById('os-modal-tbody');
+  const title    = document.getElementById('os-modal-title');
+  const subtitle = document.getElementById('os-modal-subtitle');
+  const count    = document.getElementById('os-modal-count');
+
+  title.textContent    = `OS — Frota ${frota}`;
+  subtitle.textContent = '';
+  count.textContent    = '';
+  content.classList.add('d-none');
+  loading.classList.remove('d-none');
+
+  if (!_osModal) _osModal = new bootstrap.Modal(document.getElementById('os-modal'));
+  _osModal.show();
+
+  try {
+    const res = await fetch(`/api/os-data?frota=${frota}&period=${periodKey}`);
+    const records = await res.json();
+
+    loading.classList.add('d-none');
+
+    if (!records.length) {
+      _osModal.hide();
+      _showSemOsToast(rowEl);
+      return;
+    }
+
+    const pd = _allPeriodsData[periodKey];
+    if (pd) {
+      subtitle.textContent = `${pd.periodo_inicio} a ${pd.periodo_fim} · ${(pd.cliente || '')}`;
+    }
+
+    tbody.innerHTML = records.map(r => {
+      const statusCls = `os-status-${r.status}`;
+      const statusLbl = OS_STATUS_LABEL[r.status] || r.status;
+      return `<tr>
+        <td class="fw-semibold">${r.nro_os}</td>
+        <td><span class="${statusCls}">${statusLbl}</span></td>
+        <td>${r.desc_problema || '—'}</td>
+        <td style="color:#8892a4;white-space:nowrap">${r.abertura_str}</td>
+        <td style="color:#8892a4;white-space:nowrap">${r.fechamento_str}</td>
+        <td class="text-end font-monospace">${r.tempo_str}</td>
+      </tr>`;
+    }).join('');
+
+    count.textContent = `${records.length} OS encontrada${records.length !== 1 ? 's' : ''}`;
+    content.classList.remove('d-none');
+  } catch (e) {
+    _osModal.hide();
+    console.error('Erro ao buscar OS:', e);
+  }
+}
+
+function _showSemOsToast(rowEl) {
+  if (rowEl) {
+    rowEl.classList.remove('shake');
+    void rowEl.offsetWidth;
+    rowEl.classList.add('shake');
+    rowEl.addEventListener('animationend', () => rowEl.classList.remove('shake'), { once: true });
+  }
+  const toast = document.getElementById('sem-os-toast');
+  toast.classList.remove('d-none');
+  clearTimeout(_semOsTimer);
+  _semOsTimer = setTimeout(() => toast.classList.add('d-none'), 2500);
+}
+
+// ── Upload de OS ──────────────────────────────────────────────────────────────
+let _osUploadModal = null;
+
+function openOsUploadModal() {
+  document.getElementById('os-drop-label').textContent = 'Clique ou arraste o arquivo .xlsx aqui';
+  document.getElementById('os-drop-icon').className    = 'bi bi-clipboard2-pulse';
+  document.getElementById('os-drop-name').textContent  = '';
+  document.getElementById('os-confirm-btn').disabled   = true;
+  document.getElementById('os-upload-progress').classList.add('d-none');
+  document.getElementById('os-upload-success').classList.add('d-none');
+  document.getElementById('os-upload-error').classList.add('d-none');
+  document.getElementById('os-file-input').value = '';
+
+  if (!_osUploadModal) _osUploadModal = new bootstrap.Modal(document.getElementById('os-upload-modal'));
+  _osUploadModal.show();
+}
+
+async function confirmOsUpload() {
+  const input = document.getElementById('os-file-input');
+  if (!input.files.length) return;
+
+  const btn = document.getElementById('os-confirm-btn');
+  btn.disabled = true;
+  document.getElementById('os-upload-progress').classList.remove('d-none');
+  document.getElementById('os-upload-success').classList.add('d-none');
+  document.getElementById('os-upload-error').classList.add('d-none');
+
+  const form = new FormData();
+  form.append('file', input.files[0]);
+
+  try {
+    const res    = await fetch('/api/upload-os', { method: 'POST', body: form });
+    const result = await res.json();
+    if (!res.ok) throw new Error(result.error);
+
+    document.getElementById('os-upload-progress').classList.add('d-none');
+    document.getElementById('os-upload-success').classList.remove('d-none');
+    document.getElementById('os-upload-success-msg').textContent =
+      `${result.count} OS carregadas com sucesso.`;
+    setTimeout(() => { _osUploadModal.hide(); btn.disabled = false; }, 1500);
+  } catch (err) {
+    document.getElementById('os-upload-progress').classList.add('d-none');
+    document.getElementById('os-upload-error').classList.remove('d-none');
+    document.getElementById('os-upload-error-msg').textContent = err.message;
+    btn.disabled = false;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const osInput = document.getElementById('os-file-input');
+  if (osInput) {
+    osInput.addEventListener('change', function () {
+      if (!this.files.length) return;
+      document.getElementById('os-drop-label').textContent = this.files[0].name;
+      document.getElementById('os-drop-icon').className    = 'bi bi-file-earmark-check text-success';
+      document.getElementById('os-drop-name').textContent  = `(${(this.files[0].size / 1024).toFixed(0)} KB)`;
+      document.getElementById('os-confirm-btn').disabled   = false;
+    });
+    const osDropZone = document.getElementById('os-drop-zone');
+    osDropZone.addEventListener('dragover', e => { e.preventDefault(); osDropZone.classList.add('drag-over'); });
+    osDropZone.addEventListener('dragleave', () => osDropZone.classList.remove('drag-over'));
+    osDropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      osDropZone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (!file || !file.name.endsWith('.xlsx')) { alert('Apenas arquivos .xlsx são aceitos.'); return; }
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      osInput.files = dt.files;
+      osInput.dispatchEvent(new Event('change'));
+    });
+  }
+});
