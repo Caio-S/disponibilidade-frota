@@ -4,6 +4,9 @@ or a local JSON file (development, when DATABASE_URL is not set).
 """
 import os
 import json
+import logging
+
+log = logging.getLogger(__name__)
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 _LOCAL_FILE  = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "kv_store.json")
@@ -30,15 +33,24 @@ def _local_set(key, value):
 
 
 # ── PostgreSQL (production) ───────────────────────────────────────────────────
+def _fix_url(url):
+    """psycopg2 requires postgresql:// not postgres://"""
+    if url.startswith("postgres://"):
+        return "postgresql://" + url[len("postgres://"):]
+    return url
+
 def _pg_conn():
     import psycopg2
-    url = DATABASE_URL
-    # Render's DATABASE_URL starts with "postgres://" but psycopg2 needs "postgresql://"
-    if url.startswith("postgres://"):
-        url = "postgresql://" + url[len("postgres://"):]
-    return psycopg2.connect(url, sslmode="require")
+    return psycopg2.connect(
+        _fix_url(DATABASE_URL),
+        sslmode="require",
+        connect_timeout=15,
+    )
+
+_pg_ready = False
 
 def _pg_init():
+    global _pg_ready
     with _pg_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -49,13 +61,12 @@ def _pg_init():
                 )
             """)
         conn.commit()
+    _pg_ready = True
+    log.info("kv_store table ready")
 
-_pg_ready = False
 def _ensure_pg():
-    global _pg_ready
     if not _pg_ready:
         _pg_init()
-        _pg_ready = True
 
 def _pg_get(key, default=None):
     _ensure_pg()
@@ -89,3 +100,13 @@ def kv_set(key, value):
         _pg_set(key, value)
     else:
         _local_set(key, value)
+
+def test_connection():
+    """Returns (ok: bool, message: str)"""
+    if not DATABASE_URL:
+        return True, "local mode (no DATABASE_URL)"
+    try:
+        _pg_init()
+        return True, "connected to PostgreSQL"
+    except Exception as e:
+        return False, str(e)

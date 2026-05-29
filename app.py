@@ -1,5 +1,6 @@
 import os
 import json
+import logging
 from flask import Flask, render_template, jsonify, request
 from werkzeug.utils import secure_filename
 from parser_xlsx import parse_report, parse_catalog, build_grouped
@@ -135,13 +136,27 @@ def api_catalog():
 
 @app.route("/api/health")
 def health():
-    from database import DATABASE_URL
-    periods = list(get_all_periods().keys())
+    from database import DATABASE_URL, test_connection
+    db_ok, db_msg = test_connection()
+    periods = []
+    try:
+        periods = list(get_all_periods().keys())
+    except Exception as e:
+        db_msg = str(e)
     return jsonify({
-        "ok":              True,
-        "db":              "postgres" if DATABASE_URL else "local",
-        "periods_loaded":  periods,
+        "ok":             db_ok,
+        "db":             "postgres" if DATABASE_URL else "local",
+        "db_message":     db_msg,
+        "periods_loaded": periods,
     })
+
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    import traceback
+    log = app.logger
+    log.error(traceback.format_exc())
+    return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
