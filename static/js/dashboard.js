@@ -1,3 +1,13 @@
+// ─── Sidebar toggle (defined here so it's available even if sidebar.js is slow) ──
+function toggleSidebar() {
+  const sidebar  = document.getElementById('sidebar');
+  const layout   = document.getElementById('layout');
+  const backdrop = document.getElementById('sidebar-backdrop');
+  const isOpen   = sidebar.classList.toggle('open');
+  layout.classList.toggle('shifted', isOpen);
+  backdrop.classList.toggle('visible', isOpen);
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PERIOD_ORDER = ['dia', 'semana', 'mes', 'acumulado'];
 const PERIOD_LABEL = { dia: 'DIA', semana: 'SEMANA', mes: 'MÊS', acumulado: 'ACUMULADO' };
